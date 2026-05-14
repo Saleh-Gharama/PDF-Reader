@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:pdf_reader/services/file_service.dart';
+import 'package:pdf_reader/services/preference_service.dart';
 import 'package:pdf_reader/screens/viewer_screen.dart';
 import 'package:pdf_reader/core/constants.dart';
 
@@ -13,22 +14,35 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final FileService _fileService = FileService();
+  final PreferenceService _preferenceService = PreferenceService();
+
   List<File> _allFiles = [];
   List<File> _filteredFiles = [];
+  List<String> _favoritePaths = [];
+  List<String> _recentPaths = [];
+
   String _selectedFilter = 'All';
+  String _searchQuery = '';
   bool _isLoading = true;
+  bool _isSearching = false;
+  final TextEditingController _searchController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
-    _loadFiles();
+    _loadData();
   }
 
-  Future<void> _loadFiles() async {
+  Future<void> _loadData() async {
     setState(() => _isLoading = true);
     final files = await _fileService.discoverFiles();
+    final favorites = await _preferenceService.getFavorites();
+    final recents = await _preferenceService.getRecents();
+
     setState(() {
       _allFiles = files;
+      _favoritePaths = favorites;
+      _recentPaths = recents;
       _applyFilter();
       _isLoading = false;
     });
@@ -36,10 +50,21 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _applyFilter() {
     setState(() {
-      if (_selectedFilter == 'All') {
-        _filteredFiles = _allFiles;
-      } else {
-        _filteredFiles = _allFiles.where((file) {
+      List<File> baseList = _allFiles;
+
+      if (_selectedFilter == 'Favorites') {
+        baseList = _allFiles.where((f) => _favoritePaths.contains(f.path)).toList();
+      } else if (_selectedFilter == 'Recents') {
+        // Sort by recents order
+        baseList = [];
+        for (var path in _recentPaths) {
+          final file = _allFiles.firstWhere((f) => f.path == path, orElse: () => File(''));
+          if (file.path.isNotEmpty) {
+            baseList.add(file);
+          }
+        }
+      } else if (_selectedFilter != 'All') {
+        baseList = _allFiles.where((file) {
           final ext = _fileService.getFileExtension(file.path);
           switch (_selectedFilter) {
             case 'PDF':
@@ -54,6 +79,26 @@ class _HomeScreenState extends State<HomeScreen> {
               return false;
           }
         }).toList();
+      }
+
+      if (_searchQuery.isNotEmpty) {
+        _filteredFiles = baseList.where((file) {
+          final name = file.path.split('/').last.toLowerCase();
+          return name.contains(_searchQuery.toLowerCase());
+        }).toList();
+      } else {
+        _filteredFiles = baseList;
+      }
+    });
+  }
+
+  Future<void> _toggleFavorite(String filePath) async {
+    await _preferenceService.toggleFavorite(filePath);
+    final favorites = await _preferenceService.getFavorites();
+    setState(() {
+      _favoritePaths = favorites;
+      if (_selectedFilter == 'Favorites') {
+        _applyFilter();
       }
     });
   }
@@ -77,18 +122,48 @@ class _HomeScreenState extends State<HomeScreen> {
       MaterialPageRoute(
         builder: (context) => ViewerScreen(file: file),
       ),
-    );
+    ).then((_) => _loadData()); // Reload to update recents
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('DocReader'),
+        title: _isSearching
+            ? TextField(
+                controller: _searchController,
+                autofocus: true,
+                decoration: const InputDecoration(
+                  hintText: 'Search documents...',
+                  border: InputBorder.none,
+                ),
+                onChanged: (value) {
+                  setState(() {
+                    _searchQuery = value;
+                    _applyFilter();
+                  });
+                },
+              )
+            : const Text('DocReader'),
         actions: [
           IconButton(
+            icon: Icon(_isSearching ? Icons.close : Icons.search),
+            onPressed: () {
+              setState(() {
+                if (_isSearching) {
+                  _isSearching = false;
+                  _searchQuery = '';
+                  _searchController.clear();
+                  _applyFilter();
+                } else {
+                  _isSearching = true;
+                }
+              });
+            },
+          ),
+          IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: _loadFiles,
+            onPressed: _loadData,
           ),
         ],
       ),
@@ -112,7 +187,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildFilterBar() {
-    final filters = ['All', 'PDF', 'Word', 'PPT', 'Excel'];
+    final filters = ['All', 'Favorites', 'Recents', 'PDF', 'Word', 'PPT', 'Excel'];
     return Container(
       height: 60,
       padding: const EdgeInsets.symmetric(vertical: 8),
@@ -151,7 +226,9 @@ class _HomeScreenState extends State<HomeScreen> {
           Icon(Icons.folder_open, size: 64, color: Colors.grey[300]),
           const SizedBox(height: 16),
           Text(
-            'No $_selectedFilter files found',
+            _searchQuery.isNotEmpty
+                ? 'No matches found for "$_searchQuery"'
+                : 'No $_selectedFilter files found',
             style: TextStyle(color: Colors.grey[600], fontSize: 16),
           ),
         ],
@@ -166,6 +243,8 @@ class _HomeScreenState extends State<HomeScreen> {
       itemBuilder: (context, index) {
         final file = _filteredFiles[index];
         final extension = _fileService.getFileExtension(file.path);
+        final isFavorite = _favoritePaths.contains(file.path);
+
         return Card(
           margin: const EdgeInsets.only(bottom: 12),
           child: ListTile(
@@ -180,7 +259,19 @@ class _HomeScreenState extends State<HomeScreen> {
               '${(file.lengthSync() / 1024).toStringAsFixed(1)} KB',
               style: TextStyle(color: Colors.grey[600]),
             ),
-            trailing: const Icon(Icons.chevron_right),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  icon: Icon(
+                    isFavorite ? Icons.favorite : Icons.favorite_border,
+                    color: isFavorite ? Colors.red : null,
+                  ),
+                  onPressed: () => _toggleFavorite(file.path),
+                ),
+                const Icon(Icons.chevron_right),
+              ],
+            ),
             onTap: () => _openFile(file),
           ),
         );
