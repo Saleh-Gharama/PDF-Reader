@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:pdf_reader/services/file_service.dart';
+import 'package:pdf_reader/services/preference_service.dart';
 import 'package:pdf_reader/screens/viewer_screen.dart';
 import 'package:pdf_reader/core/constants.dart';
 
@@ -13,10 +14,13 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final FileService _fileService = FileService();
+  final PreferenceService _preferenceService = PreferenceService();
   List<File> _allFiles = [];
   List<File> _filteredFiles = [];
   String _selectedFilter = 'All';
   bool _isLoading = true;
+  bool _isSearching = false;
+  final TextEditingController _searchController = TextEditingController();
 
   @override
   void initState() {
@@ -27,34 +31,57 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _loadFiles() async {
     setState(() => _isLoading = true);
     final files = await _fileService.discoverFiles();
-    setState(() {
-      _allFiles = files;
-      _applyFilter();
-      _isLoading = false;
-    });
+    _allFiles = files;
+    await _applyFilter();
+    if (mounted) {
+      setState(() {
+        _isLoading = false;
+      });
+    }
   }
 
-  void _applyFilter() {
+  Future<void> _applyFilter() async {
+    List<File> filtered = [];
+    final query = _searchController.text.toLowerCase();
+
+    if (_selectedFilter == 'Favorites') {
+      final favPaths = await _preferenceService.getFavorites();
+      filtered = _allFiles.where((f) => favPaths.contains(f.path)).toList();
+    } else if (_selectedFilter == 'Recents') {
+      final recentPaths = await _preferenceService.getRecents();
+      // To maintain order of recents, we map paths to files
+      filtered = recentPaths
+          .map((path) => _allFiles.firstWhere((f) => f.path == path,
+              orElse: () => File(path)))
+          .where((f) => f.existsSync())
+          .toList();
+    } else {
+      filtered = _allFiles.where((file) {
+        final ext = _fileService.getFileExtension(file.path);
+        if (_selectedFilter == 'All') return true;
+        switch (_selectedFilter) {
+          case 'PDF':
+            return AppConstants.pdfExtensions.contains(ext);
+          case 'Word':
+            return AppConstants.docxExtensions.contains(ext);
+          case 'PPT':
+            return ext == 'pptx';
+          case 'Excel':
+            return ext == 'xlsx';
+          default:
+            return false;
+        }
+      }).toList();
+    }
+
+    if (query.isNotEmpty) {
+      filtered = filtered.where((file) {
+        return file.path.split('/').last.toLowerCase().contains(query);
+      }).toList();
+    }
+
     setState(() {
-      if (_selectedFilter == 'All') {
-        _filteredFiles = _allFiles;
-      } else {
-        _filteredFiles = _allFiles.where((file) {
-          final ext = _fileService.getFileExtension(file.path);
-          switch (_selectedFilter) {
-            case 'PDF':
-              return AppConstants.pdfExtensions.contains(ext);
-            case 'Word':
-              return AppConstants.docxExtensions.contains(ext);
-            case 'PPT':
-              return ext == 'pptx';
-            case 'Excel':
-              return ext == 'xlsx';
-            default:
-              return false;
-          }
-        }).toList();
-      }
+      _filteredFiles = filtered;
     });
   }
 
@@ -64,28 +91,52 @@ class _HomeScreenState extends State<HomeScreen> {
       if (!_allFiles.any((f) => f.path == file.path)) {
         setState(() {
           _allFiles.insert(0, file);
-          _applyFilter();
         });
+        await _applyFilter();
       }
       _openFile(file);
     }
   }
 
-  void _openFile(File file) {
-    Navigator.push(
+  void _openFile(File file) async {
+    await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => ViewerScreen(file: file),
       ),
     );
+    // Refresh list in case favorites changed
+    _applyFilter();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('DocReader'),
+        title: _isSearching
+            ? TextField(
+                controller: _searchController,
+                autofocus: true,
+                decoration: const InputDecoration(
+                  hintText: 'Search files...',
+                  border: InputBorder.none,
+                ),
+                onChanged: (_) => _applyFilter(),
+              )
+            : const Text('DocReader'),
         actions: [
+          IconButton(
+            icon: Icon(_isSearching ? Icons.close : Icons.search),
+            onPressed: () {
+              setState(() {
+                _isSearching = !_isSearching;
+                if (!_isSearching) {
+                  _searchController.clear();
+                  _applyFilter();
+                }
+              });
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: _loadFiles,
@@ -112,7 +163,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildFilterBar() {
-    final filters = ['All', 'PDF', 'Word', 'PPT', 'Excel'];
+    final filters = ['All', 'PDF', 'Word', 'PPT', 'Excel', 'Favorites', 'Recents'];
     return Container(
       height: 60,
       padding: const EdgeInsets.symmetric(vertical: 8),
