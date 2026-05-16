@@ -25,6 +25,7 @@ class _HomeScreenState extends State<HomeScreen> {
   String _searchQuery = '';
   bool _isLoading = true;
   bool _isSearching = false;
+  bool _isGridView = false;
   final TextEditingController _searchController = TextEditingController();
 
   @override
@@ -162,6 +163,14 @@ class _HomeScreenState extends State<HomeScreen> {
             },
           ),
           IconButton(
+            icon: Icon(_isGridView ? Icons.view_list : Icons.grid_view),
+            onPressed: () {
+              setState(() {
+                _isGridView = !_isGridView;
+              });
+            },
+          ),
+          IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: _loadData,
           ),
@@ -175,7 +184,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 ? const Center(child: CircularProgressIndicator())
                 : _filteredFiles.isEmpty
                     ? _buildEmptyState()
-                    : _buildFilesList(),
+                    : _isGridView
+                        ? _buildFilesGrid()
+                        : _buildFilesList(),
           ),
         ],
       ),
@@ -279,7 +290,71 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildFileIcon(String extension) {
+  Widget _buildFilesGrid() {
+    return GridView.builder(
+      padding: const EdgeInsets.all(16),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        childAspectRatio: 0.85,
+        crossAxisSpacing: 12,
+        mainAxisSpacing: 12,
+      ),
+      itemCount: _filteredFiles.length,
+      itemBuilder: (context, index) {
+        final file = _filteredFiles[index];
+        final extension = _fileService.getFileExtension(file.path);
+        final isFavorite = _favoritePaths.contains(file.path);
+
+        return Card(
+          child: InkWell(
+            onTap: () => _openFile(file),
+            borderRadius: BorderRadius.circular(12),
+            child: Padding(
+              padding: const EdgeInsets.all(12.0),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Expanded(
+                    child: Center(child: _buildFileIcon(extension, size: 48)),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    file.path.split('/').last,
+                    maxLines: 2,
+                    textAlign: TextAlign.center,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        '${(file.lengthSync() / 1024).toStringAsFixed(0)} KB',
+                        style: TextStyle(color: Colors.grey[600], fontSize: 11),
+                      ),
+                      IconButton(
+                        icon: Icon(
+                          isFavorite ? Icons.favorite : Icons.favorite_border,
+                          color: isFavorite ? Colors.red : null,
+                          size: 18,
+                        ),
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                        onPressed: () => _toggleFavorite(file.path),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildFileIcon(String extension, {double size = 24}) {
     IconData iconData;
     Color color;
     switch (extension) {
@@ -309,7 +384,7 @@ class _HomeScreenState extends State<HomeScreen> {
         color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(8),
       ),
-      child: Icon(iconData, color: color),
+      child: Icon(iconData, color: color, size: size),
     );
   }
 }
