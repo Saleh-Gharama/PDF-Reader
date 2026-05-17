@@ -15,6 +15,8 @@ class _PdfViewerWidgetState extends State<PdfViewerWidget> {
   late PdfViewerController _pdfViewerController;
   late PdfTextSearchResult _searchResult;
   bool _isSearchVisible = false;
+  bool _isNightMode = false;
+  PdfScrollDirection _scrollDirection = PdfScrollDirection.vertical;
   final TextEditingController _searchController = TextEditingController();
 
   @override
@@ -34,36 +36,149 @@ class _PdfViewerWidgetState extends State<PdfViewerWidget> {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        if (_isSearchVisible)
-          _buildSearchToolbar(),
+        if (_isSearchVisible) _buildSearchToolbar(),
         Expanded(
           child: Stack(
             children: [
-              SfPdfViewer.file(
-                widget.file,
-                controller: _pdfViewerController,
+              ColorFiltered(
+                colorFilter: _isNightMode
+                    ? const ColorFilter.matrix([
+                        -1.0, 0.0, 0.0, 0.0, 255.0, // R
+                        0.0, -1.0, 0.0, 0.0, 255.0, // G
+                        0.0, 0.0, -1.0, 0.0, 255.0, // B
+                        0.0, 0.0, 0.0, 1.0, 0.0, // A
+                      ])
+                    : const ColorFilter.mode(Colors.transparent, BlendMode.multiply),
+                child: SfPdfViewer.file(
+                  widget.file,
+                  controller: _pdfViewerController,
+                  scrollDirection: _scrollDirection,
+                ),
               ),
               Positioned(
                 bottom: 16,
                 right: 16,
-                child: FloatingActionButton(
-                  mini: true,
-                  onPressed: () {
-                    setState(() {
-                      _isSearchVisible = !_isSearchVisible;
-                      if (!_isSearchVisible) {
-                        _searchResult.clear();
-                        _searchController.clear();
-                      }
-                    });
-                  },
-                  child: Icon(_isSearchVisible ? Icons.close : Icons.search),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    FloatingActionButton(
+                      mini: true,
+                      heroTag: 'settings',
+                      onPressed: () {}, // Handled by PopupMenuButton
+                      child: _buildSettingsMenu(),
+                    ),
+                    const SizedBox(height: 8),
+                    FloatingActionButton(
+                      mini: true,
+                      heroTag: 'search',
+                      onPressed: () {
+                        setState(() {
+                          _isSearchVisible = !_isSearchVisible;
+                          if (!_isSearchVisible) {
+                            _searchResult.clear();
+                            _searchController.clear();
+                          }
+                        });
+                      },
+                      child: Icon(_isSearchVisible ? Icons.close : Icons.search),
+                    ),
+                  ],
                 ),
               ),
             ],
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildSettingsMenu() {
+    return PopupMenuButton<String>(
+      icon: const Icon(Icons.settings),
+      onSelected: (value) {
+        switch (value) {
+          case 'night_mode':
+            setState(() => _isNightMode = !_isNightMode);
+            break;
+          case 'jump_to_page':
+            _showJumpToPageDialog();
+            break;
+          case 'scroll_direction':
+            setState(() {
+              _scrollDirection = _scrollDirection == PdfScrollDirection.vertical
+                  ? PdfScrollDirection.horizontal
+                  : PdfScrollDirection.vertical;
+            });
+            break;
+        }
+      },
+      itemBuilder: (context) => [
+        PopupMenuItem(
+          value: 'night_mode',
+          child: Row(
+            children: [
+              Icon(_isNightMode ? Icons.light_mode : Icons.dark_mode),
+              const SizedBox(width: 8),
+              Text(_isNightMode ? 'Light Mode' : 'Night Mode'),
+            ],
+          ),
+        ),
+        PopupMenuItem(
+          value: 'jump_to_page',
+          child: Row(
+            children: [
+              Icon(Icons.find_in_page),
+              const SizedBox(width: 8),
+              Text('Jump to Page'),
+            ],
+          ),
+        ),
+        PopupMenuItem(
+          value: 'scroll_direction',
+          child: Row(
+            children: [
+              Icon(_scrollDirection == PdfScrollDirection.vertical
+                  ? Icons.swap_horiz
+                  : Icons.swap_vert),
+              const SizedBox(width: 8),
+              Text(_scrollDirection == PdfScrollDirection.vertical
+                  ? 'Horizontal Scroll'
+                  : 'Vertical Scroll'),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _showJumpToPageDialog() {
+    final TextEditingController pageController = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Jump to Page'),
+        content: TextField(
+          controller: pageController,
+          keyboardType: TextInputType.number,
+          decoration: const InputDecoration(hintText: 'Enter page number'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              final page = int.tryParse(pageController.text);
+              if (page != null && page > 0) {
+                _pdfViewerController.jumpToPage(page);
+              }
+              Navigator.pop(context);
+            },
+            child: const Text('Go'),
+          ),
+        ],
+      ),
     );
   }
 
