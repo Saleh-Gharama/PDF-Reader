@@ -15,6 +15,8 @@ class _PdfViewerWidgetState extends State<PdfViewerWidget> {
   late PdfViewerController _pdfViewerController;
   late PdfTextSearchResult _searchResult;
   bool _isSearchVisible = false;
+  bool _isNightMode = false;
+  bool _isVerticalScroll = true;
   final TextEditingController _searchController = TextEditingController();
 
   @override
@@ -39,10 +41,29 @@ class _PdfViewerWidgetState extends State<PdfViewerWidget> {
         Expanded(
           child: Stack(
             children: [
-              SfPdfViewer.file(
-                widget.file,
-                controller: _pdfViewerController,
-              ),
+              _isNightMode
+                  ? ColorFiltered(
+                      colorFilter: const ColorFilter.matrix([
+                        -1, 0, 0, 0, 255, // Red
+                        0, -1, 0, 0, 255, // Green
+                        0, 0, -1, 0, 255, // Blue
+                        0, 0, 0, 1, 0, // Alpha
+                      ]),
+                      child: SfPdfViewer.file(
+                        widget.file,
+                        controller: _pdfViewerController,
+                        scrollDirection: _isVerticalScroll
+                            ? PdfScrollDirection.vertical
+                            : PdfScrollDirection.horizontal,
+                      ),
+                    )
+                  : SfPdfViewer.file(
+                      widget.file,
+                      controller: _pdfViewerController,
+                      scrollDirection: _isVerticalScroll
+                          ? PdfScrollDirection.vertical
+                          : PdfScrollDirection.horizontal,
+                    ),
               Positioned(
                 bottom: 16,
                 right: 16,
@@ -64,6 +85,40 @@ class _PdfViewerWidgetState extends State<PdfViewerWidget> {
           ),
         ),
       ],
+    );
+  }
+
+  void _showJumpToPageDialog() {
+    final TextEditingController pageController = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Jump to Page'),
+        content: TextField(
+          controller: pageController,
+          keyboardType: TextInputType.number,
+          decoration: InputDecoration(
+            hintText: 'Enter page number (1 - ${_pdfViewerController.pageCount})',
+          ),
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              final page = int.tryParse(pageController.text);
+              if (page != null && page > 0 && page <= _pdfViewerController.pageCount) {
+                _pdfViewerController.jumpToPage(page);
+                Navigator.pop(context);
+              }
+            },
+            child: const Text('Go'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -107,6 +162,49 @@ class _PdfViewerWidgetState extends State<PdfViewerWidget> {
               },
             ),
           ],
+          PopupMenuButton<String>(
+            onSelected: (value) {
+              if (value == 'night_mode') {
+                setState(() => _isNightMode = !_isNightMode);
+              } else if (value == 'jump_to_page') {
+                _showJumpToPageDialog();
+              } else if (value == 'scroll_direction') {
+                setState(() => _isVerticalScroll = !_isVerticalScroll);
+              }
+            },
+            itemBuilder: (context) => [
+              PopupMenuItem(
+                value: 'night_mode',
+                child: Row(
+                  children: [
+                    Icon(_isNightMode ? Icons.light_mode : Icons.dark_mode),
+                    const SizedBox(width: 8),
+                    Text(_isNightMode ? 'Light Mode' : 'Night Mode'),
+                  ],
+                ),
+              ),
+              PopupMenuItem(
+                value: 'scroll_direction',
+                child: Row(
+                  children: [
+                    Icon(_isVerticalScroll ? Icons.swap_horiz : Icons.swap_vert),
+                    const SizedBox(width: 8),
+                    Text(_isVerticalScroll ? 'Horizontal Scroll' : 'Vertical Scroll'),
+                  ],
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'jump_to_page',
+                child: Row(
+                  children: [
+                    Icon(Icons.directions),
+                    const SizedBox(width: 8),
+                    Text('Jump to Page'),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ],
       ),
     );
