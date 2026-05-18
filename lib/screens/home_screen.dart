@@ -25,6 +25,7 @@ class _HomeScreenState extends State<HomeScreen> {
   String _searchQuery = '';
   bool _isLoading = true;
   bool _isSearching = false;
+  bool _isGridView = false;
   final TextEditingController _searchController = TextEditingController();
 
   @override
@@ -38,11 +39,13 @@ class _HomeScreenState extends State<HomeScreen> {
     final files = await _fileService.discoverFiles();
     final favorites = await _preferenceService.getFavorites();
     final recents = await _preferenceService.getRecents();
+    final isGrid = await _preferenceService.isGridView();
 
     setState(() {
       _allFiles = files;
       _favoritePaths = favorites;
       _recentPaths = recents;
+      _isGridView = isGrid;
       _applyFilter();
       _isLoading = false;
     });
@@ -162,6 +165,14 @@ class _HomeScreenState extends State<HomeScreen> {
             },
           ),
           IconButton(
+            icon: Icon(_isGridView ? Icons.view_list : Icons.grid_view),
+            onPressed: () async {
+              final newValue = !_isGridView;
+              await _preferenceService.setIsGridView(newValue);
+              setState(() => _isGridView = newValue);
+            },
+          ),
+          IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: _loadData,
           ),
@@ -175,7 +186,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 ? const Center(child: CircularProgressIndicator())
                 : _filteredFiles.isEmpty
                     ? _buildEmptyState()
-                    : _buildFilesList(),
+                    : _isGridView
+                        ? _buildFilesGrid()
+                        : _buildFilesList(),
           ),
         ],
       ),
@@ -236,6 +249,74 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Widget _buildFilesGrid() {
+    return GridView.builder(
+      padding: const EdgeInsets.all(16),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        crossAxisSpacing: 12,
+        mainAxisSpacing: 12,
+        childAspectRatio: 0.8,
+      ),
+      itemCount: _filteredFiles.length,
+      itemBuilder: (context, index) {
+        final file = _filteredFiles[index];
+        final extension = _fileService.getFileExtension(file.path);
+        final isFavorite = _favoritePaths.contains(file.path);
+
+        return Card(
+          child: InkWell(
+            onTap: () => _openFile(file),
+            borderRadius: BorderRadius.circular(12),
+            child: Padding(
+              padding: const EdgeInsets.all(12.0),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Expanded(
+                    child: Center(
+                      child: _buildFileIcon(extension, size: 48),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    file.path.split('/').last,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w500,
+                      fontSize: 13,
+                    ),
+                  ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        '${(file.lengthSync() / 1024).toStringAsFixed(0)} KB',
+                        style: TextStyle(color: Colors.grey[600], fontSize: 11),
+                      ),
+                      IconButton(
+                        icon: Icon(
+                          isFavorite ? Icons.favorite : Icons.favorite_border,
+                          color: isFavorite ? Colors.red : null,
+                          size: 18,
+                        ),
+                        onPressed: () => _toggleFavorite(file.path),
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Widget _buildFilesList() {
     return ListView.builder(
       itemCount: _filteredFiles.length,
@@ -279,7 +360,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildFileIcon(String extension) {
+  Widget _buildFileIcon(String extension, {double size = 24}) {
     IconData iconData;
     Color color;
     switch (extension) {
@@ -309,7 +390,7 @@ class _HomeScreenState extends State<HomeScreen> {
         color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(8),
       ),
-      child: Icon(iconData, color: color),
+      child: Icon(iconData, color: color, size: size),
     );
   }
 }
