@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 class PreferenceService {
   static const String _favoritesKey = 'favorite_files';
   static const String _recentsKey = 'recent_files';
+  static const String _layoutKey = 'home_layout';
 
   Future<List<String>> getFavorites() async {
     final prefs = await SharedPreferences.getInstance();
@@ -44,5 +45,15 @@ class PreferenceService {
     }
 
     await prefs.setStringList(_recentsKey, recents);
+  }
+
+  Future<bool> isGridView() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_layoutKey) ?? false;
+  }
+
+  Future<void> setGridView(bool isGrid) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_layoutKey, isGrid);
   }
 }
