@@ -14,7 +14,11 @@ class PdfViewerWidget extends StatefulWidget {
 class _PdfViewerWidgetState extends State<PdfViewerWidget> {
   late PdfViewerController _pdfViewerController;
   late PdfTextSearchResult _searchResult;
+  final GlobalKey<SfPdfViewerState> _pdfViewerKey = GlobalKey();
   bool _isSearchVisible = false;
+  bool _isNightMode = false;
+  int _currentPage = 0;
+  int _totalPage = 0;
   final TextEditingController _searchController = TextEditingController();
 
   @override
@@ -30,6 +34,37 @@ class _PdfViewerWidgetState extends State<PdfViewerWidget> {
     super.dispose();
   }
 
+  Widget _buildPdfViewer() {
+    final pdfViewer = SfPdfViewer.file(
+      widget.file,
+      key: _pdfViewerKey,
+      controller: _pdfViewerController,
+      onPageChanged: (PdfPageChangedDetails details) {
+        setState(() {
+          _currentPage = details.newPageNumber;
+        });
+      },
+      onDocumentLoaded: (PdfDocumentLoadedDetails details) {
+        setState(() {
+          _totalPage = details.document.pages.count;
+        });
+      },
+    );
+
+    if (_isNightMode) {
+      return ColorFiltered(
+        colorFilter: const ColorFilter.matrix([
+          -1.0, 0.0, 0.0, 0.0, 255.0,
+          0.0, -1.0, 0.0, 0.0, 255.0,
+          0.0, 0.0, -1.0, 0.0, 255.0,
+          0.0, 0.0, 0.0, 1.0, 0.0
+        ]),
+        child: pdfViewer,
+      );
+    }
+    return pdfViewer;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -39,10 +74,23 @@ class _PdfViewerWidgetState extends State<PdfViewerWidget> {
         Expanded(
           child: Stack(
             children: [
-              SfPdfViewer.file(
-                widget.file,
-                controller: _pdfViewerController,
-              ),
+              _buildPdfViewer(),
+              if (_totalPage > 0)
+                Positioned(
+                  bottom: 16,
+                  left: 16,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: Colors.black54,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      'Page $_currentPage of $_totalPage',
+                      style: const TextStyle(color: Colors.white, fontSize: 12),
+                    ),
+                  ),
+                ),
               Positioned(
                 bottom: 16,
                 right: 16,
@@ -69,10 +117,34 @@ class _PdfViewerWidgetState extends State<PdfViewerWidget> {
 
   Widget _buildSearchToolbar() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       color: Theme.of(context).cardColor,
       child: Row(
         children: [
+          IconButton(
+            icon: Icon(_isNightMode ? Icons.light_mode : Icons.dark_mode),
+            onPressed: () {
+              setState(() {
+                _isNightMode = !_isNightMode;
+              });
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.bookmark),
+            onPressed: () {
+              _pdfViewerKey.currentState?.openBookmarkView();
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.input),
+            onPressed: () async {
+              final int? page = await _showJumpToPageDialog();
+              if (page != null && page > 0 && page <= _totalPage) {
+                _pdfViewerController.jumpToPage(page);
+              }
+            },
+          ),
+          const VerticalDivider(),
           Expanded(
             child: TextField(
               controller: _searchController,
@@ -109,6 +181,37 @@ class _PdfViewerWidgetState extends State<PdfViewerWidget> {
           ],
         ],
       ),
+    );
+  }
+
+  Future<int?> _showJumpToPageDialog() async {
+    int? pageNumber;
+    return showDialog<int>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Jump to Page'),
+          content: TextField(
+            keyboardType: TextInputType.number,
+            decoration: InputDecoration(
+              hintText: 'Enter page (1-$_totalPage)',
+            ),
+            onChanged: (value) {
+              pageNumber = int.tryParse(value);
+            },
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, pageNumber),
+              child: const Text('OK'),
+            ),
+          ],
+        );
+      },
     );
   }
 }
