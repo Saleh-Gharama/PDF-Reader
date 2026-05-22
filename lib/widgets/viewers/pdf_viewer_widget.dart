@@ -14,7 +14,13 @@ class PdfViewerWidget extends StatefulWidget {
 class _PdfViewerWidgetState extends State<PdfViewerWidget> {
   late PdfViewerController _pdfViewerController;
   late PdfTextSearchResult _searchResult;
+  final GlobalKey<SfPdfViewerState> _pdfViewerKey = GlobalKey();
+
   bool _isSearchVisible = false;
+  bool _isNightMode = false;
+  int _currentPage = 0;
+  int _totalPageCount = 0;
+
   final TextEditingController _searchController = TextEditingController();
 
   @override
@@ -36,13 +42,22 @@ class _PdfViewerWidgetState extends State<PdfViewerWidget> {
       children: [
         if (_isSearchVisible)
           _buildSearchToolbar(),
+        _buildTopToolbar(),
         Expanded(
           child: Stack(
             children: [
-              SfPdfViewer.file(
-                widget.file,
-                controller: _pdfViewerController,
-              ),
+              if (_isNightMode)
+                ColorFiltered(
+                  colorFilter: const ColorFilter.matrix([
+                    -1.0, 0.0, 0.0, 0.0, 255.0,
+                    0.0, -1.0, 0.0, 0.0, 255.0,
+                    0.0, 0.0, -1.0, 0.0, 255.0,
+                    0.0, 0.0, 0.0, 1.0, 0.0,
+                  ]),
+                  child: _buildViewer(),
+                )
+              else
+                _buildViewer(),
               Positioned(
                 bottom: 16,
                 right: 16,
@@ -64,6 +79,94 @@ class _PdfViewerWidgetState extends State<PdfViewerWidget> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildTopToolbar() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      color: Theme.of(context).cardColor,
+      child: Row(
+        children: [
+          IconButton(
+            icon: Icon(_isNightMode ? Icons.light_mode : Icons.dark_mode),
+            onPressed: () {
+              setState(() {
+                _isNightMode = !_isNightMode;
+              });
+            },
+            tooltip: 'Night Mode',
+          ),
+          IconButton(
+            icon: const Icon(Icons.input),
+            onPressed: _showJumpToPageDialog,
+            tooltip: 'Jump to Page',
+          ),
+          IconButton(
+            icon: const Icon(Icons.bookmark),
+            onPressed: () {
+              _pdfViewerKey.currentState?.openBookmarkView();
+            },
+            tooltip: 'Bookmarks',
+          ),
+          const Spacer(),
+          Text('Page $_currentPage of $_totalPageCount'),
+        ],
+      ),
+    );
+  }
+
+  void _showJumpToPageDialog() {
+    final TextEditingController pageController = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Jump to Page'),
+          content: TextField(
+            controller: pageController,
+            keyboardType: TextInputType.number,
+            decoration: InputDecoration(
+              hintText: 'Enter page (1-$_totalPageCount)',
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () {
+                final int? page = int.tryParse(pageController.text);
+                if (page != null && page > 0 && page <= _totalPageCount) {
+                  _pdfViewerController.jumpToPage(page);
+                  Navigator.pop(context);
+                }
+              },
+              child: const Text('Go'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildViewer() {
+    return SfPdfViewer.file(
+      widget.file,
+      key: _pdfViewerKey,
+      controller: _pdfViewerController,
+      onDocumentLoaded: (PdfDocumentLoadedDetails details) {
+        setState(() {
+          _totalPageCount = _pdfViewerController.pageCount;
+          _currentPage = _pdfViewerController.pageNumber;
+        });
+      },
+      onPageChanged: (PdfPageChangedDetails details) {
+        setState(() {
+          _currentPage = details.newPageNumber;
+        });
+      },
     );
   }
 

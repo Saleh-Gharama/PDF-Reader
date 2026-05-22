@@ -25,6 +25,7 @@ class _HomeScreenState extends State<HomeScreen> {
   String _searchQuery = '';
   bool _isLoading = true;
   bool _isSearching = false;
+  bool _isGridLayout = false;
   final TextEditingController _searchController = TextEditingController();
 
   @override
@@ -38,11 +39,13 @@ class _HomeScreenState extends State<HomeScreen> {
     final files = await _fileService.discoverFiles();
     final favorites = await _preferenceService.getFavorites();
     final recents = await _preferenceService.getRecents();
+    final isGrid = await _preferenceService.isGridLayout();
 
     setState(() {
       _allFiles = files;
       _favoritePaths = favorites;
       _recentPaths = recents;
+      _isGridLayout = isGrid;
       _applyFilter();
       _isLoading = false;
     });
@@ -100,6 +103,14 @@ class _HomeScreenState extends State<HomeScreen> {
       if (_selectedFilter == 'Favorites') {
         _applyFilter();
       }
+    });
+  }
+
+  Future<void> _toggleLayout() async {
+    final newLayout = !_isGridLayout;
+    await _preferenceService.setGridLayout(newLayout);
+    setState(() {
+      _isGridLayout = newLayout;
     });
   }
 
@@ -162,6 +173,10 @@ class _HomeScreenState extends State<HomeScreen> {
             },
           ),
           IconButton(
+            icon: Icon(_isGridLayout ? Icons.list : Icons.grid_view),
+            onPressed: _toggleLayout,
+          ),
+          IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: _loadData,
           ),
@@ -175,7 +190,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 ? const Center(child: CircularProgressIndicator())
                 : _filteredFiles.isEmpty
                     ? _buildEmptyState()
-                    : _buildFilesList(),
+                    : _isGridLayout
+                        ? _buildFilesGrid()
+                        : _buildFilesList(),
           ),
         ],
       ),
@@ -242,44 +259,125 @@ class _HomeScreenState extends State<HomeScreen> {
       padding: const EdgeInsets.all(16),
       itemBuilder: (context, index) {
         final file = _filteredFiles[index];
-        final extension = _fileService.getFileExtension(file.path);
-        final isFavorite = _favoritePaths.contains(file.path);
-
-        return Card(
-          margin: const EdgeInsets.only(bottom: 12),
-          child: ListTile(
-            leading: _buildFileIcon(extension),
-            title: Text(
-              file.path.split('/').last,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontWeight: FontWeight.w500),
-            ),
-            subtitle: Text(
-              '${(file.lengthSync() / 1024).toStringAsFixed(1)} KB',
-              style: TextStyle(color: Colors.grey[600]),
-            ),
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                IconButton(
-                  icon: Icon(
-                    isFavorite ? Icons.favorite : Icons.favorite_border,
-                    color: isFavorite ? Colors.red : null,
-                  ),
-                  onPressed: () => _toggleFavorite(file.path),
-                ),
-                const Icon(Icons.chevron_right),
-              ],
-            ),
-            onTap: () => _openFile(file),
-          ),
-        );
+        return _buildFileListItem(file);
       },
     );
   }
 
-  Widget _buildFileIcon(String extension) {
+  Widget _buildFilesGrid() {
+    return GridView.builder(
+      padding: const EdgeInsets.all(16),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        crossAxisSpacing: 16,
+        mainAxisSpacing: 16,
+        childAspectRatio: 0.8,
+      ),
+      itemCount: _filteredFiles.length,
+      itemBuilder: (context, index) {
+        final file = _filteredFiles[index];
+        return _buildFileGridItem(file);
+      },
+    );
+  }
+
+  Widget _buildFileListItem(File file) {
+    final extension = _fileService.getFileExtension(file.path);
+    final isFavorite = _favoritePaths.contains(file.path);
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: ListTile(
+        leading: _buildFileIcon(extension),
+        title: Text(
+          file.path.split('/').last,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontWeight: FontWeight.w500),
+        ),
+        subtitle: Text(
+          '${(file.lengthSync() / 1024).toStringAsFixed(1)} KB',
+          style: TextStyle(color: Colors.grey[600]),
+        ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            IconButton(
+              icon: Icon(
+                isFavorite ? Icons.favorite : Icons.favorite_border,
+                color: isFavorite ? Colors.red : null,
+              ),
+              onPressed: () => _toggleFavorite(file.path),
+            ),
+            const Icon(Icons.chevron_right),
+          ],
+        ),
+        onTap: () => _openFile(file),
+      ),
+    );
+  }
+
+  Widget _buildFileGridItem(File file) {
+    final extension = _fileService.getFileExtension(file.path);
+    final isFavorite = _favoritePaths.contains(file.path);
+
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () => _openFile(file),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Container(
+                width: double.infinity,
+                color: Theme.of(context).primaryColor.withValues(alpha: 0.05),
+                child: Center(
+                  child: _buildFileIcon(extension, size: 48),
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          file.path.split('/').last,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 12),
+                        ),
+                        Text(
+                          '${(file.lengthSync() / 1024).toStringAsFixed(1)} KB',
+                          style: TextStyle(color: Colors.grey[600], fontSize: 10),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    iconSize: 18,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    icon: Icon(
+                      isFavorite ? Icons.favorite : Icons.favorite_border,
+                      color: isFavorite ? Colors.red : null,
+                    ),
+                    onPressed: () => _toggleFavorite(file.path),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFileIcon(String extension, {double size = 24}) {
     IconData iconData;
     Color color;
     switch (extension) {
@@ -309,7 +407,7 @@ class _HomeScreenState extends State<HomeScreen> {
         color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(8),
       ),
-      child: Icon(iconData, color: color),
+      child: Icon(iconData, color: color, size: size),
     );
   }
 }
