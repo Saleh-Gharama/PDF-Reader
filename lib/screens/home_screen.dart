@@ -4,6 +4,7 @@ import 'package:pdf_reader/services/file_service.dart';
 import 'package:pdf_reader/services/preference_service.dart';
 import 'package:pdf_reader/screens/viewer_screen.dart';
 import 'package:pdf_reader/core/constants.dart';
+import 'package:intl/intl.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -256,7 +257,7 @@ class _HomeScreenState extends State<HomeScreen> {
               style: const TextStyle(fontWeight: FontWeight.w500),
             ),
             subtitle: Text(
-              '${(file.lengthSync() / 1024).toStringAsFixed(1)} KB',
+              '${(file.lengthSync() / 1024).toStringAsFixed(1)} KB • ${DateFormat('MMM dd, yyyy').format(file.lastModifiedSync())}',
               style: TextStyle(color: Colors.grey[600]),
             ),
             trailing: Row(

@@ -36,6 +36,7 @@ dependencies:
   cupertino_icons: ^1.0.8
   file_picker: ^8.3.3
   syncfusion_flutter_pdfviewer: ^28.2.3
+  syncfusion_flutter_pdf: ^28.2.3
   docx_file_viewer: ^1.0.1
   microsoft_viewer: ^0.0.8
   path_provider: ^2.1.5
