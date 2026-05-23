@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:syncfusion_flutter_pdf/pdf.dart';
 import 'package:pdf_reader/core/constants.dart';
 
 class FileService {
@@ -66,5 +67,30 @@ class FileService {
 
   String getFileExtension(String path) {
     return path.split('.').last.toLowerCase();
+  }
+
+  Future<Map<String, String>> getPdfMetadata(File file) async {
+    try {
+      final List<int> bytes = await file.readAsBytes();
+      final PdfDocument document = PdfDocument(inputBytes: bytes);
+      final PdfDocumentInformation info = document.documentInformation;
+
+      final metadata = {
+        'Title': info.title.isNotEmpty ? info.title : 'Unknown',
+        'Author': info.author.isNotEmpty ? info.author : 'Unknown',
+        'Subject': info.subject.isNotEmpty ? info.subject : 'Unknown',
+        'Keywords': info.keywords.isNotEmpty ? info.keywords : 'None',
+        'Creator': info.creator.isNotEmpty ? info.creator : 'Unknown',
+        'Producer': info.producer.isNotEmpty ? info.producer : 'Unknown',
+        'Creation Date': info.creationDate.toString(),
+        'Modification Date': info.modificationDate.toString(),
+        'Pages': document.pages.count.toString(),
+      };
+
+      document.dispose();
+      return metadata;
+    } catch (e) {
+      return {'Error': 'Could not extract metadata: $e'};
+    }
   }
 }
