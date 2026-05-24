@@ -45,4 +45,14 @@ class PreferenceService {
 
     await prefs.setStringList(_recentsKey, recents);
   }
+
+  Future<void> savePageProgress(String filePath, int page) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('progress_$filePath', page);
+  }
+
+  Future<int> getPageProgress(String filePath) async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getInt('progress_$filePath') ?? 1;
+  }
 }
